@@ -1,0 +1,8 @@
+services:
+    ta-pruner:
+        image: thearyadev0/tubearchivist-pruner:latest # or version tag
+        environment:
+            TUBEARCHIVIST_URL: ""
+            API_TOKEN: ""
+            PRUNE_OLDER_THAN: "" # number of days. All videos older than this, that are watched, will be deleted.
+            SLEEP: "" # OPTONAL: number of seconds to wait before running again
