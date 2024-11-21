@@ -40,4 +40,4 @@ services:
             SLEEP: "" # OPTONAL: number of seconds to wait before running again
 ```
 
-
+license: wtfpl
