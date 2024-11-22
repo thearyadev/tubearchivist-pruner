@@ -8,6 +8,7 @@ import requests
 
 LIST_VIDEOS_PATH = "/api/video/"
 DELETE_VIDEO_PATH = "/api/video/%s/"
+IGNORE_VIDEO_PATH = "/api/download/%s/"
 type Video = dict[str, typing.Any]
 type VideoArray = list[Video]
 
@@ -23,7 +24,9 @@ def fetch_all_videos(api_url: str, api_key: str) -> VideoArray:
             url=f"{api_url}{LIST_VIDEOS_PATH}?page={page}", headers=headers
         )
         if request.status_code != 200:
-            logging.error("Recieved non-200 status code from Tube archivist when fetching video lists")
+            logging.error(
+                "Recieved non-200 status code from Tube archivist when fetching video lists"
+            )
             logging.error(request.content)
             raise Exception("Failed to reach tubearchivist")
         if len(content := request.json()["data"]) != 0:
@@ -33,6 +36,7 @@ def fetch_all_videos(api_url: str, api_key: str) -> VideoArray:
         last_page_reached = False
     return videos
 
+
 def delete_video(video: Video, api_url: str, api_key: str) -> None:
     headers = {"Authorization": f"Token {api_key}"}
     url = f"{api_url}{DELETE_VIDEO_PATH % video.get('youtube_id')}"
@@ -41,6 +45,17 @@ def delete_video(video: Video, api_url: str, api_key: str) -> None:
     if request.status_code != 200:
         logging.error("Recieved non-200 status code from Tube archivist when deleting")
     return None
+
+
+def ignore_video(video: Video, api_url: str, api_key: str) -> None:
+    headers = {"Authorization": f"Token {api_key}"}
+    url = f"{api_url}{IGNORE_VIDEO_PATH% video.get('youtube_id')}"
+    logging.info(f"Ignoring: {url.replace('/api', '')}")
+    request = requests.post(url, headers=headers, json={"status": "ignore-force"})
+    if request.status_code != 200:
+        logging.error("Recieved non-200 status code from Tube archivist when deleting")
+    return None
+
 
 def filter_watched(videos: VideoArray) -> VideoArray:
     return [v for v in videos if v["player"]["watched"] == True]
@@ -68,11 +83,14 @@ def prune(
     logging.info(f"Filtered results to {len(videos)} videos.")
     for v in videos:
         delete_video(v, api_url, api_key)
+        ignore_video(v, api_url, api_key)
+
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(
-        prog="tubearchivist-pruner", description="this script will delete all videos that are watched and older than a specified number of days"
+        prog="tubearchivist-pruner",
+        description="this script will delete all videos that are watched and older than a specified number of days",
     )
 
     parser.add_argument(
@@ -85,7 +103,9 @@ def main() -> int:
     parser.add_argument(
         "-u", "--url", required=True, type=str, help="Tube archivist API url"
     )
-    parser.add_argument("-t", "--token", type=str, required=True, help="Tube archviist api token")
+    parser.add_argument(
+        "-t", "--token", type=str, required=True, help="Tube archviist api token"
+    )
     parser.add_argument("-e", "--endless", action="store_true")
     parser.add_argument("-s", "--sleep", type=int, required=False, default=10)
     args = parser.parse_args()
@@ -96,13 +116,13 @@ def main() -> int:
             min_age=args.min_watched_age,
             api_key=args.token,
         )
-        
+
         if not args.endless:
             return 0
 
         logging.info(f"running endless... sleeping for {args.sleep} seconds")
         time.sleep(args.sleep)
-        
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
