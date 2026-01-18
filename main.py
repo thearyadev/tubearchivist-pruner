@@ -69,14 +69,27 @@ def filter_watched_date(videos: VideoArray, cutoff: datetime.datetime) -> VideoA
     ]
 
 
+def str_to_bool(value: str) -> bool:
+    if value.lower() in ("true", "1", "yes"):
+        return True
+    elif value.lower() in ("false", "0", "no"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
+
+
 def prune(
     api_url: str,
     min_age: int,
     api_key: str,
+    ignore_watch_status: bool = False,
 ) -> None:
     videos = fetch_all_videos(api_url, api_key)
     logging.info(f"Found {len(videos)} videos. Filtering age and watch status...")
-    videos = filter_watched(videos)
+
+    if not ignore_watch_status:
+        videos = filter_watched(videos)
+
     videos = filter_watched_date(
         videos, cutoff=datetime.datetime.now() - datetime.timedelta(days=min_age)
     )
@@ -108,6 +121,13 @@ def main() -> int:
     )
     parser.add_argument("-e", "--endless", action="store_true")
     parser.add_argument("-s", "--sleep", type=int, required=False, default=10)
+    parser.add_argument(
+        "-i",
+        "--ignore-watch-status",
+        type=str_to_bool,
+        default=False,
+        help="Delete videos regardless of watch status (true/false)",
+    )
     args = parser.parse_args()
 
     while True:
@@ -115,6 +135,7 @@ def main() -> int:
             api_url=args.url,
             min_age=args.min_watched_age,
             api_key=args.token,
+            ignore_watch_status=args.ignore_watch_status,
         )
 
         if not args.endless:
