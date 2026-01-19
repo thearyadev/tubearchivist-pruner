@@ -95,8 +95,10 @@ def prune(
     )
     logging.info(f"Filtered results to {len(videos)} videos.")
     for v in videos:
-        delete_video(v, api_url, api_key)
         ignore_video(v, api_url, api_key)
+        time.sleep(0.3)
+        delete_video(v, api_url, api_key)
+
 
 
 def main() -> int:
