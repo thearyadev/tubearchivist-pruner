@@ -7,4 +7,8 @@ COPY requirements.txt .
 
 RUN python3 -m pip install -r requirements.txt
 
-CMD python main.py -u "$TUBEARCHIVIST_URL" -a "$PRUNE_OLDER_THAN" -t "$API_TOKEN" -e -s "$SLEEP" -i "$IGNORE_WATCH_STATUS"
+CMD set -e; \
+    set -- python main.py -u "$TUBEARCHIVIST_URL" -a "$PRUNE_OLDER_THAN" -t "$API_TOKEN" -e; \
+    if [ -n "$SLEEP" ]; then set -- "$@" -s "$SLEEP"; fi; \
+    if [ -n "$IGNORE_WATCH_STATUS" ]; then set -- "$@" -i "$IGNORE_WATCH_STATUS"; fi; \
+    exec "$@"

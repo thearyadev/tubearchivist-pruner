@@ -9,6 +9,8 @@ import requests
 LIST_VIDEOS_PATH = "/api/video/"
 DELETE_VIDEO_PATH = "/api/video/%s/"
 IGNORE_VIDEO_PATH = "/api/download/%s/"
+STARTUP_GRACE_PERIOD_SECONDS = 10
+STARTUP_RETRY_INTERVAL_SECONDS = 1
 type Video = dict[str, typing.Any]
 type VideoArray = list[Video]
 
@@ -42,8 +44,8 @@ def delete_video(video: Video, api_url: str, api_key: str) -> None:
     url = f"{api_url}{DELETE_VIDEO_PATH % video.get('youtube_id')}"
     logging.info(f"Deleting: {url.replace('/api', '')}")
     request = requests.delete(url, headers=headers)
-    if request.status_code != 200:
-        logging.error("Recieved non-200 status code from Tube archivist when deleting")
+    if not 200 <= request.status_code < 300:
+        logging.error("Recieved non-2xx status code from Tube archivist when deleting")
     return None
 
 
@@ -53,7 +55,7 @@ def ignore_video(video: Video, api_url: str, api_key: str) -> None:
     logging.info(f"Ignoring: {url.replace('/api', '')}")
     request = requests.post(url, headers=headers, json={"status": "ignore-force"})
     if request.status_code != 200:
-        logging.error("Recieved non-200 status code from Tube archivist when deleting")
+        logging.error("Recieved non-200 status code from Tube archivist when ignoring")
     return None
 
 
@@ -100,12 +102,39 @@ def prune(
         delete_video(v, api_url, api_key)
 
 
+def run_with_startup_retry(action_name: str, action: typing.Callable[[], None]) -> None:
+    deadline = time.monotonic() + STARTUP_GRACE_PERIOD_SECONDS
+    attempt = 1
+    while True:
+        try:
+            action()
+            return
+        except Exception as err:
+            if time.monotonic() >= deadline:
+                logging.error(
+                    "%s failed during startup for %s seconds, exiting.",
+                    action_name,
+                    STARTUP_GRACE_PERIOD_SECONDS,
+                )
+                raise
+
+            logging.warning(
+                "%s startup attempt %s failed: %s. Retrying in %s second(s).",
+                action_name,
+                attempt,
+                err,
+                STARTUP_RETRY_INTERVAL_SECONDS,
+            )
+            attempt += 1
+            time.sleep(STARTUP_RETRY_INTERVAL_SECONDS)
+
+
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(
         prog="tubearchivist-pruner",
-        description="this script will delete all videos that are watched and older than a specified number of days",
+        description="this script will delete watched videos older than a specified number of days based on download date",
     )
 
     parser.add_argument(
@@ -113,7 +142,7 @@ def main() -> int:
         "--min-watched-age",
         required=True,
         type=int,
-        help="Min age in days from the watched date",
+        help="Min age in days from the download date",
     )
     parser.add_argument(
         "-u", "--url", required=True, type=str, help="Tube archivist API url"
@@ -132,19 +161,28 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    run_with_startup_retry(
+        "Pruner",
+        lambda: prune(
+            api_url=args.url,
+            min_age=args.min_watched_age,
+            api_key=args.token,
+            ignore_watch_status=args.ignore_watch_status,
+        ),
+    )
+
+    if not args.endless:
+        return 0
+
     while True:
+        logging.info(f"running endless... sleeping for {args.sleep} seconds")
+        time.sleep(args.sleep)
         prune(
             api_url=args.url,
             min_age=args.min_watched_age,
             api_key=args.token,
             ignore_watch_status=args.ignore_watch_status,
         )
-
-        if not args.endless:
-            return 0
-
-        logging.info(f"running endless... sleeping for {args.sleep} seconds")
-        time.sleep(args.sleep)
 
 
 if __name__ == "__main__":
